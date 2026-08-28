@@ -140,21 +140,33 @@ interface BashOperations {
   exec(command: string): Promise<{ stdout: string; exitCode: number }>;
 }
 
+export type ApprovalConfig =
+  | { mode: "interactive" }
+  | { mode: "background" }
+  | { mode: "delegated"; trust: string[] };
+
+function matchesPrefix(command: string, prefixes: string[]): boolean {
+  const normalized = command.trim();
+  if (/[;&|><`]|\$\(/.test(normalized)) return false;
+  return prefixes.some(
+    (prefix) => normalized === prefix || normalized.startsWith(`${prefix} `),
+  );
+}
+
+export function createApproval(config: ApprovalConfig) {
+  return ({ command }: { command: string }): boolean => {
+    if (config.mode === "background") return false;
+    if (config.mode === "delegated") {
+      return !matchesPrefix(command, config.trust);
+    }
+    return !matchesPrefix(command, safePrefixes);
+  };
+}
+
 function createBashTool(
   operations: BashOperations,
-  allowedPrefixes: string[],
+  needsApproval: (input: { command: string }) => boolean,
 ) {
-  function isSafe(command: string): boolean {
-    const normalized = command.trim();
-    const containsShellOperator = /[;&|><`]|\$\(/.test(normalized);
-    return (
-      !containsShellOperator &&
-      allowedPrefixes.some(
-        (prefix) => normalized === prefix || normalized.startsWith(`${prefix} `),
-      )
-    );
-  }
-
   return tool({
     description: `Execute a shell command in the working directory. Returns stdout, stderr, or an exit error.
 
@@ -177,8 +189,8 @@ EXAMPLES:
       command: z.string().describe("Shell command to execute"),
     }),
     execute: async ({ command }) => {
-      if (!isSafe(command)) {
-        return `Blocked: "${command}" requires approval. Only safe commands (${allowedPrefixes.join(", ")}) run automatically.`;
+      if (needsApproval({ command })) {
+        return `Blocked: "${command}" requires approval.`;
       }
 
       const { stdout, exitCode } = await operations.exec(command);
@@ -210,7 +222,10 @@ const localOps: BashOperations = {
   },
 };
 
-const bash = createBashTool(localOps, safePrefixes);
+const bash = createBashTool(
+  localOps,
+  createApproval({ mode: "interactive" }),
+);
 
 export const agent = new ToolLoopAgent({
   model: deepseek("deepseek-v4-flash"),
