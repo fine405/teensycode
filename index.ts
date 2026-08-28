@@ -1,10 +1,13 @@
 import { deepseek } from "@ai-sdk/deepseek";
 import { ToolLoopAgent, stepCountIs, tool } from "ai";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 import { z } from "zod";
 
 const cwd = resolve(process.argv[2] || process.cwd());
+const execFileAsync = promisify(execFile);
 
 function resolveProjectPath(filePath: string): string {
   const absolutePath = resolve(cwd, filePath);
@@ -20,7 +23,11 @@ function resolveProjectPath(filePath: string): string {
 const read = tool({
   description: `Read a file from the project. Returns numbered lines.
 WHEN TO USE: viewing file contents, checking configs, reading source code.
-WHEN NOT TO USE: searching across files (use grep instead).`,
+WHEN NOT TO USE: searching across files (use grep instead).
+DO NOT USE FOR: running commands, listing directories.
+EXAMPLES:
+  - Read a config: path "tsconfig.json"
+  - Read part of a file: path "src/index.ts", offset 20, limit 40`,
   inputSchema: z.object({
     path: z.string().describe("File path relative to working directory"),
     offset: z.number().int().positive().optional().describe("Start line (1-indexed)"),
@@ -43,10 +50,62 @@ WHEN NOT TO USE: searching across files (use grep instead).`,
   },
 });
 
+const grep = tool({
+  description: `Search file contents using regex. Returns matching lines with file paths.
+WHEN TO USE: finding patterns across multiple files, locating definitions,
+  searching imports, finding TODOs or error messages.
+WHEN NOT TO USE: reading a known file (use read instead).
+DO NOT USE FOR: running commands, listing directories.
+EXAMPLES:
+  - Find TODO comments: pattern "TODO", glob "*.ts"
+  - Find function declarations: pattern "function \\w+", glob "*.ts"`,
+  inputSchema: z.object({
+    pattern: z.string().describe("Extended regular expression to search for"),
+    path: z.string().optional().describe("Directory to search (default: working directory)"),
+    glob: z.string().optional().describe("File glob filter, e.g. '*.ts'"),
+  }),
+  execute: async ({ pattern, path: searchPath = ".", glob = "*" }) => {
+    const directory = resolveProjectPath(searchPath);
+    const args = [
+      "-rn",
+      "--exclude-dir=node_modules",
+      "--exclude-dir=.git",
+      `--include=${glob}`,
+      "-E",
+      "--",
+      pattern,
+      directory,
+    ];
+
+    let output = "";
+    try {
+      const { stdout } = await execFileAsync("grep", args, {
+        encoding: "utf8",
+        timeout: 10_000,
+        maxBuffer: 1_000_000,
+      });
+      output = stdout;
+    } catch (error) {
+      const result = error as NodeJS.ErrnoException & { code?: number; stdout?: string };
+      if (result.code !== 1 && !result.stdout) throw error;
+      output = result.stdout ?? "";
+    }
+
+    const lines = output.trim().split("\n").filter(Boolean);
+    const maxMatches = 50;
+    const matches = lines.slice(0, maxMatches);
+
+    if (matches.length === 0) return "No matches found.";
+    return lines.length > maxMatches
+      ? `${matches.join("\n")}\n... (${lines.length} total, showing first ${maxMatches})`
+      : matches.join("\n");
+  },
+});
+
 export const agent = new ToolLoopAgent({
   model: deepseek("deepseek-v4-flash"),
   instructions: `You are a coding agent.\nWorking directory: ${cwd}`,
-  tools: { read },
+  tools: { read, grep },
   stopWhen: stepCountIs(10),
 });
 
