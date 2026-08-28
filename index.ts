@@ -1,24 +1,14 @@
 import { deepseek } from "@ai-sdk/deepseek";
-import { ToolLoopAgent, pruneMessages, stepCountIs } from "ai";
+import { ToolLoopAgent, pruneMessages, stepCountIs, tool } from "ai";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { z } from "zod";
+import { createRegistry, registerBuiltins } from "./src/registry";
 import { createJustBashSandbox } from "./src/sandbox-just-bash";
 import { createLocalSandbox } from "./src/sandbox-local";
 import type { SandboxLifecycle } from "./src/sandbox";
 import { discoverSkills } from "./src/skills";
 import { buildSystemPrompt } from "./src/system";
-import {
-  createApproval,
-  createAskUserTool,
-  createBashTool,
-  createEditTool,
-  createGrepTool,
-  createLoadSkillTool,
-  createReadTool,
-  createTaskTool,
-  createTodoTool,
-  createWriteTool,
-} from "./src/tools";
 import { discoverVerificationCommands } from "./src/verification";
 
 const { values, positionals } = parseArgs({
@@ -55,31 +45,23 @@ const skills = discoverSkills(skillDirectories);
 console.error(`Sandbox: ${sandbox.type}`);
 await lifecycle.afterStart?.(sandbox);
 
-const baseTools = {
-  read: createReadTool(sandbox),
-  grep: createGrepTool(sandbox),
-  write: createWriteTool(sandbox),
-  edit: createEditTool(sandbox),
-  bash: createBashTool(sandbox, createApproval({ mode: "interactive" })),
-  askUser: createAskUserTool(),
-  todo: createTodoTool(),
-  loadSkill: createLoadSkillTool(skills),
-};
-const tools = {
-  ...baseTools,
-  task: createTaskTool(sandbox, {
-    read: baseTools.read,
-    grep: baseTools.grep,
-    write: baseTools.write,
-    edit: baseTools.edit,
+const registry = createRegistry();
+registerBuiltins(registry, sandbox, skills);
+registry.register(
+  "now",
+  tool({
+    description: "Return the current timestamp as an ISO 8601 string.",
+    inputSchema: z.object({}),
+    execute: async () => new Date().toISOString(),
   }),
-};
+);
+const tools = Object.fromEntries(registry.entries());
 const projectContext = await sandbox.readFile("AGENTS.md").catch(() => undefined);
 const verificationCommands = await discoverVerificationCommands(sandbox);
 const instructions = buildSystemPrompt({
   workingDirectory: sandbox.workingDirectory,
   sandboxType: sandbox.type,
-  toolNames: Object.keys(tools),
+  toolNames: registry.list(),
   projectContext,
   verificationCommands,
   skills: skills.map(({ name, description }) => ({ name, description })),
