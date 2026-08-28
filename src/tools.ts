@@ -173,9 +173,15 @@ EXAMPLES:
       }
 
       const result = await sandbox.exec(command);
+      const maxCharacters = 5_000;
+      const output = result.stdout || "(no output)";
+      const boundedOutput = output.length > maxCharacters
+        ? `${output.slice(-maxCharacters)}\n... (truncated, showing last ${maxCharacters} chars)`
+        : output;
+
       return result.exitCode === 0
-        ? result.stdout || "(no output)"
-        : `Exit ${result.exitCode}: ${result.stdout}`;
+        ? boundedOutput
+        : `Exit ${result.exitCode}: ${boundedOutput}`;
     },
   });
 }
