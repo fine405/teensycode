@@ -111,9 +111,24 @@ if (import.meta.main) {
   });
 
   try {
-    const { text, steps } = await agent.generate({ prompt });
-    console.log(text);
-    console.log(`\n(${steps.length} steps)`);
+    const result = await agent.stream({ prompt });
+
+    for await (const chunk of result.fullStream) {
+      if (chunk.type === "text-delta") {
+        process.stdout.write(chunk.text);
+      } else if (chunk.type === "tool-call") {
+        console.error(`\n[tool] ${chunk.toolName}(${JSON.stringify(chunk.input)})`);
+      } else if (chunk.type === "tool-result") {
+        const serialized = typeof chunk.output === "string"
+          ? chunk.output
+          : JSON.stringify(chunk.output) ?? String(chunk.output);
+        console.error(`  -> ${serialized.slice(0, 100)}`);
+      } else if (chunk.type === "tool-error") {
+        console.error(`  -> error: ${String(chunk.error)}`);
+      }
+    }
+
+    process.stdout.write("\n");
   } finally {
     await stopSandbox();
   }
