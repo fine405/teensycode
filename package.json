@@ -9,7 +9,9 @@
     "test": "bun test"
   },
   "dependencies": {
-    "ai": "6.0.271"
+    "@ai-sdk/deepseek": "2.0.61",
+    "ai": "6.0.271",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/bun": "1.3.3",
