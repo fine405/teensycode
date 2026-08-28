@@ -18,6 +18,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Do NOT claim that tests pass without running them");
     expect(prompt).toContain("# Handling Ambiguity");
     expect(prompt).toContain("Use askUser to let the user choose");
+    expect(prompt).toContain("Search before reading");
   });
 
   test("omits optional sections when context is absent", () => {

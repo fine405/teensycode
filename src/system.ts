@@ -16,6 +16,8 @@ export function buildSystemPrompt(context: PromptContext): string {
 - Do NOT explain what you would do. Actually complete the task.
 - Prefer grep for searching and read for viewing known files.
 - Use bash only for commands that are not covered by another tool.
+- Search before reading. Use grep first, then read only what you will change.
+- Do not read files "just in case." Read what you need when you need it.
 - Available tools: ${context.toolNames.join(", ")}`,
   ];
 
