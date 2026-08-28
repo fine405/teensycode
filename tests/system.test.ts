@@ -8,6 +8,7 @@ describe("buildSystemPrompt", () => {
       sandboxType: "local",
       toolNames: ["read", "grep"],
       gitBranch: "feature/test",
+      verificationCommands: ["npm run typecheck", "npm test"],
     });
 
     expect(prompt).toContain("working in: /project");
@@ -19,6 +20,9 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("# Handling Ambiguity");
     expect(prompt).toContain("Use askUser to let the user choose");
     expect(prompt).toContain("Search before reading");
+    expect(prompt).toContain("1. `npm run typecheck`");
+    expect(prompt).toContain("2. `npm test`");
+    expect(prompt).toContain("failures caused by your changes");
   });
 
   test("omits optional sections when context is absent", () => {

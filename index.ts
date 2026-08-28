@@ -16,6 +16,7 @@ import {
   createTodoTool,
   createWriteTool,
 } from "./src/tools";
+import { discoverVerificationCommands } from "./src/verification";
 
 const cwd = resolve(process.argv[2] || process.cwd());
 const sandboxType = process.env.SANDBOX ?? "local";
@@ -46,11 +47,13 @@ const tools = {
   }),
 };
 const projectContext = await sandbox.readFile("AGENTS.md").catch(() => undefined);
+const verificationCommands = await discoverVerificationCommands(sandbox);
 const instructions = buildSystemPrompt({
   workingDirectory: sandbox.workingDirectory,
   sandboxType: sandbox.type,
   toolNames: Object.keys(tools),
   projectContext,
+  verificationCommands,
 });
 
 export const agent = new ToolLoopAgent({

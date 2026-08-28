@@ -4,6 +4,7 @@ export interface PromptContext {
   toolNames: string[];
   gitBranch?: string;
   projectContext?: string;
+  verificationCommands?: string[];
 }
 
 export function buildSystemPrompt(context: PromptContext): string {
@@ -31,17 +32,23 @@ export function buildSystemPrompt(context: PromptContext): string {
 - Search before creating and reuse existing patterns.
 - Do not add dependencies without asking.`);
 
+  const verificationGates = context.verificationCommands?.length
+    ? context.verificationCommands
+        .map((command, index) => `${index + 1}. \`${command}\``)
+        .join("\n")
+    : "(no verification commands discovered for this project)";
+
   sections.push(`
 # Verification
-After making changes, verify your work:
-1. Run \`npm run typecheck\` when TypeScript is present.
-2. Run lint, test, or build commands only when they exist in the project and
-   are allowed by the current approval mode.
-3. Report exactly what ran, what was blocked, and what was unavailable.
-4. Do not inflate partial verification into a blanket success claim.
+After making changes, run these project gates in order:
+${verificationGates}
 
-Do NOT claim that tests pass without running them. Scope every verification
-claim to the checks that actually ran.`);
+Report exactly what ran, what passed, what failed, what was blocked, and what
+was unavailable. Distinguish failures caused by your changes from failures
+that were already present.
+
+Do NOT claim that tests pass without running them. Do not inflate partial
+verification into a blanket success claim.`);
 
   sections.push(`
 # Handling Ambiguity
