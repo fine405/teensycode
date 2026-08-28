@@ -49,9 +49,18 @@ function resolveProjectPath(filePath: string): string {
 
 const read = tool({
   description: `Read a file from the project. Returns numbered lines.
-WHEN TO USE: viewing file contents, checking configs, reading source code.
-WHEN NOT TO USE: searching across files (use grep instead).
-DO NOT USE FOR: running commands, listing directories.
+
+WHEN TO USE: viewing file contents, checking configurations, reading source
+  code, examining specific lines with offset and limit.
+
+WHEN NOT TO USE: searching across files (use grep instead), running commands
+  (use bash instead).
+
+DO NOT USE FOR: searching code, executing commands, or modifying files.
+
+USAGE: path is relative to the working directory. offset and limit are
+  optional positive integers. Output is capped at 500 lines.
+
 EXAMPLES:
   - Read a config: path "tsconfig.json"
   - Read part of a file: path "src/index.ts", offset 20, limit 40`,
@@ -79,13 +88,22 @@ EXAMPLES:
 
 const grep = tool({
   description: `Search file contents using regex. Returns matching lines with file paths.
+
 WHEN TO USE: finding patterns across multiple files, locating definitions,
   searching imports, finding TODOs or error messages.
-WHEN NOT TO USE: reading a known file (use read instead).
-DO NOT USE FOR: running commands, listing directories.
+
+WHEN NOT TO USE: reading a known file (use read instead), running commands
+  (use bash instead).
+
+DO NOT USE FOR: reading files, listing directories, or modifying files.
+
+USAGE: pattern is an extended regular expression. path defaults to the working
+  directory, glob defaults to "*", and results are capped at 50 matches.
+
 EXAMPLES:
   - Find TODO comments: pattern "TODO", glob "*.ts"
-  - Find function declarations: pattern "function \\w+", glob "*.ts"`,
+  - Find function declarations: pattern "function \\w+", glob "*.ts"
+  - Find imports: pattern "from '@ai-sdk/", glob "*.ts"`,
   inputSchema: z.object({
     pattern: z.string().describe("Extended regular expression to search for"),
     path: z.string().optional().describe("Directory to search (default: working directory)"),
@@ -130,15 +148,23 @@ EXAMPLES:
 });
 
 const bash = tool({
-  description: `Execute a shell command in the working directory.
+  description: `Execute a shell command in the working directory. Returns stdout, stderr, or an exit error.
+
 WHEN TO USE: running build commands, package scripts, tests, git operations,
   or directory listings.
+
 WHEN NOT TO USE: reading file contents (use read instead), searching for
   patterns (use grep instead).
-DO NOT USE FOR: reading files or searching code.
+
+DO NOT USE FOR: reading files, searching code, or bypassing an approval gate.
+
+USAGE: command is a single shell string. Only allowlisted command prefixes run
+  automatically; shell operators are never considered safe.
+
 EXAMPLES:
   - List files: command "ls -la"
-  - Inspect changes: command "git diff"`,
+  - Inspect changes: command "git diff"
+  - Show recent commits: command "git log --oneline -5"`,
   inputSchema: z.object({
     command: z.string().describe("Shell command to execute"),
   }),
