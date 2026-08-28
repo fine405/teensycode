@@ -13,6 +13,7 @@ import {
   createGrepTool,
   createReadTool,
   createTaskTool,
+  createTodoTool,
   createWriteTool,
 } from "./src/tools";
 
@@ -33,6 +34,7 @@ const baseTools = {
   edit: createEditTool(sandbox),
   bash: createBashTool(sandbox, createApproval({ mode: "interactive" })),
   askUser: createAskUserTool(),
+  todo: createTodoTool(),
 };
 const tools = {
   ...baseTools,

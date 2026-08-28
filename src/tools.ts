@@ -1,5 +1,6 @@
 import { deepseek } from "@ai-sdk/deepseek";
 import { ToolLoopAgent, stepCountIs, tool } from "ai";
+import { randomUUID } from "node:crypto";
 import { isAbsolute, normalize } from "node:path";
 import { z } from "zod";
 import type { Sandbox } from "./sandbox";
@@ -278,6 +279,81 @@ USAGE: ask one concise question with two to four mutually exclusive options.`,
       console.log(`\n${output}\n`);
       return `Asked: "${question}"\nOptions:\n${formatted}\n\n(Awaiting user response.)`;
     },
+  });
+}
+
+interface TodoItem {
+  id: string;
+  description: string;
+  state: "pending" | "in_progress" | "completed";
+}
+
+interface TodoInput {
+  action: "add" | "start" | "complete" | "list";
+  description?: string;
+  id?: string;
+}
+
+export function createTodoManager() {
+  const todos: TodoItem[] = [];
+
+  return {
+    run({ action, description, id }: TodoInput): string {
+      if (action === "add") {
+        const item: TodoItem = {
+          id: randomUUID().slice(0, 8),
+          description: description ?? "(unnamed)",
+          state: "pending",
+        };
+        todos.push(item);
+        return `Added: [${item.id}] ${item.description}`;
+      }
+
+      if (action === "start") {
+        const active = todos.find((todo) => todo.state === "in_progress");
+        if (active) {
+          return `Already working on: [${active.id}] ${active.description}. Complete it first.`;
+        }
+        const item = todos.find((todo) => todo.id === id);
+        if (!item) return `No todo with id ${id}.`;
+        item.state = "in_progress";
+        return `Started: [${item.id}] ${item.description}`;
+      }
+
+      if (action === "complete") {
+        const item = todos.find((todo) => todo.id === id);
+        if (!item) return `No todo with id ${id}.`;
+        item.state = "completed";
+        return `Completed: [${item.id}] ${item.description}`;
+      }
+
+      return todos
+        .map((todo) => `[${todo.state}] ${todo.id}: ${todo.description}`)
+        .join("\n") || "No todos.";
+    },
+  };
+}
+
+export function createTodoTool() {
+  const manager = createTodoManager();
+
+  return tool({
+    description: `Manage an in-memory task list for multi-step work.
+
+WHEN TO USE: tasks with three or more steps, multiple files, or dependencies
+  between changes. Plan once, then track one active item at a time.
+
+WHEN NOT TO USE: single-file fixes, simple questions, or open-ended exploration.
+
+DO NOT USE FOR: progress messages to the user.
+
+USAGE: add pending items, start exactly one, complete it, then start the next.`,
+    inputSchema: z.object({
+      action: z.enum(["add", "start", "complete", "list"]),
+      description: z.string().optional(),
+      id: z.string().optional(),
+    }),
+    execute: async (input) => manager.run(input),
   });
 }
 
