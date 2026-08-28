@@ -25,17 +25,6 @@ const safePrefixes = [
   "git diff",
 ];
 
-function isSafe(command: string): boolean {
-  const normalized = command.trim();
-  const containsShellOperator = /[;&|><`]|\$\(/.test(normalized);
-  return (
-    !containsShellOperator &&
-    safePrefixes.some(
-      (prefix) => normalized === prefix || normalized.startsWith(`${prefix} `),
-    )
-  );
-}
-
 function resolveProjectPath(filePath: string): string {
   const absolutePath = resolve(cwd, filePath);
   const relativePath = relative(cwd, absolutePath);
@@ -147,8 +136,27 @@ EXAMPLES:
   },
 });
 
-const bash = tool({
-  description: `Execute a shell command in the working directory. Returns stdout, stderr, or an exit error.
+interface BashOperations {
+  exec(command: string): Promise<{ stdout: string; exitCode: number }>;
+}
+
+function createBashTool(
+  operations: BashOperations,
+  allowedPrefixes: string[],
+) {
+  function isSafe(command: string): boolean {
+    const normalized = command.trim();
+    const containsShellOperator = /[;&|><`]|\$\(/.test(normalized);
+    return (
+      !containsShellOperator &&
+      allowedPrefixes.some(
+        (prefix) => normalized === prefix || normalized.startsWith(`${prefix} `),
+      )
+    );
+  }
+
+  return tool({
+    description: `Execute a shell command in the working directory. Returns stdout, stderr, or an exit error.
 
 WHEN TO USE: running build commands, package scripts, tests, git operations,
   or directory listings.
@@ -165,31 +173,44 @@ EXAMPLES:
   - List files: command "ls -la"
   - Inspect changes: command "git diff"
   - Show recent commits: command "git log --oneline -5"`,
-  inputSchema: z.object({
-    command: z.string().describe("Shell command to execute"),
-  }),
-  execute: async ({ command }) => {
-    if (!isSafe(command)) {
-      return `Blocked: "${command}" requires approval. Only safe commands (${safePrefixes.join(", ")}) run automatically.`;
-    }
+    inputSchema: z.object({
+      command: z.string().describe("Shell command to execute"),
+    }),
+    execute: async ({ command }) => {
+      if (!isSafe(command)) {
+        return `Blocked: "${command}" requires approval. Only safe commands (${allowedPrefixes.join(", ")}) run automatically.`;
+      }
 
+      const { stdout, exitCode } = await operations.exec(command);
+      return exitCode === 0 ? stdout || "(no output)" : `Exit ${exitCode}: ${stdout}`;
+    },
+  });
+}
+
+const localOps: BashOperations = {
+  exec: async (command) => {
     try {
       const { stdout, stderr } = await execAsync(command, {
         cwd,
         encoding: "utf8",
         timeout: 30_000,
       });
-      return stdout || stderr || "(no output)";
+      return { stdout: stdout || stderr, exitCode: 0 };
     } catch (error) {
       const result = error as Error & {
         code?: number;
         stdout?: string;
         stderr?: string;
       };
-      return `Exit ${result.code ?? 1}: ${result.stdout || result.stderr || result.message}`;
+      return {
+        stdout: result.stdout || result.stderr || result.message,
+        exitCode: result.code ?? 1,
+      };
     }
   },
-});
+};
+
+const bash = createBashTool(localOps, safePrefixes);
 
 export const agent = new ToolLoopAgent({
   model: deepseek("deepseek-v4-flash"),
