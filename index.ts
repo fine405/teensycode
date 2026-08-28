@@ -1,5 +1,5 @@
 import { deepseek } from "@ai-sdk/deepseek";
-import { ToolLoopAgent, stepCountIs } from "ai";
+import { ToolLoopAgent, pruneMessages, stepCountIs } from "ai";
 import { resolve } from "node:path";
 import { createJustBashSandbox } from "./src/sandbox-just-bash";
 import { createLocalSandbox } from "./src/sandbox-local";
@@ -40,6 +40,15 @@ export const agent = new ToolLoopAgent({
   instructions,
   tools,
   stopWhen: stepCountIs(10),
+  prepareCall: (options) => ({
+    ...options,
+    messages: options.messages
+      ? pruneMessages({
+          messages: options.messages,
+          toolCalls: "before-last-3-messages",
+        })
+      : undefined,
+  }),
   onStepFinish: ({ usage, stepNumber }) => {
     console.error(
       `Step ${stepNumber}: ${usage.inputTokens ?? 0} input, ${usage.outputTokens ?? 0} output`,
