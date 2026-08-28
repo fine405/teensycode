@@ -3,6 +3,7 @@ import { ToolLoopAgent, pruneMessages, stepCountIs, tool } from "ai";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
+import { createEventBus, wrapToolWithEvents } from "./src/events";
 import { createRegistry, registerBuiltins } from "./src/registry";
 import { createJustBashSandbox } from "./src/sandbox-just-bash";
 import { createLocalSandbox } from "./src/sandbox-local";
@@ -34,6 +35,13 @@ async function sandboxFromFlag(name: string) {
 
 const sandbox = await sandboxFromFlag(values.sandbox);
 const lifecycle: SandboxLifecycle = {};
+export const events = createEventBus();
+events.on("session_start", async ({ sandbox }) => {
+  await lifecycle.afterStart?.(sandbox);
+});
+events.on("session_shutdown", async ({ sandbox }) => {
+  await lifecycle.beforeStop?.(sandbox);
+});
 const skillDirectories = [
   join(cwd, "skills"),
   ...(process.env.HOME
@@ -43,7 +51,11 @@ const skillDirectories = [
 const skills = discoverSkills(skillDirectories);
 
 console.error(`Sandbox: ${sandbox.type}`);
-await lifecycle.afterStart?.(sandbox);
+const start = await events.emit("session_start", { sandbox });
+if (start.blocked) {
+  await sandbox.stop();
+  throw new Error(start.reason);
+}
 
 const registry = createRegistry();
 registerBuiltins(registry, sandbox, skills);
@@ -55,6 +67,9 @@ registry.register(
     execute: async () => new Date().toISOString(),
   }),
 );
+for (const [name, registeredTool] of registry.entries()) {
+  registry.register(name, wrapToolWithEvents(name, registeredTool, events));
+}
 const tools = Object.fromEntries(registry.entries());
 const projectContext = await sandbox.readFile("AGENTS.md").catch(() => undefined);
 const verificationCommands = await discoverVerificationCommands(sandbox);
@@ -72,15 +87,28 @@ export const agent = new ToolLoopAgent({
   instructions,
   tools,
   stopWhen: stepCountIs(10),
-  prepareCall: (options) => ({
-    ...options,
-    messages: options.messages
-      ? pruneMessages({
-          messages: options.messages,
-          toolCalls: "before-last-3-messages",
-        })
-      : undefined,
-  }),
+  prepareCall: async (options) => {
+    const compact = await events.emit("session_before_compact", {
+      messages: options.messages,
+      instructions: options.instructions,
+      customInstructions: undefined as string | undefined,
+    });
+    if (compact.blocked) throw new Error(compact.reason);
+
+    const extra = compact.data.customInstructions;
+    return {
+      ...options,
+      instructions: extra
+        ? `${compact.data.instructions ?? ""}\n${extra}`
+        : compact.data.instructions,
+      messages: compact.data.messages
+        ? pruneMessages({
+            messages: compact.data.messages,
+            toolCalls: "before-last-3-messages",
+          })
+        : undefined,
+    };
+  },
   onStepFinish: ({ usage, stepNumber }) => {
     console.error(
       `Step ${stepNumber}: ${usage.inputTokens ?? 0} input, ${usage.outputTokens ?? 0} output, ${usage.cachedInputTokens ?? 0} cached`,
@@ -93,8 +121,11 @@ if (import.meta.main) {
   const stopSandbox = async () => {
     if (stopped) return;
     stopped = true;
-    await lifecycle.beforeStop?.(sandbox);
-    await sandbox.stop();
+    try {
+      await events.emit("session_shutdown", { sandbox });
+    } finally {
+      await sandbox.stop();
+    }
   };
 
   process.once("SIGINT", async () => {
