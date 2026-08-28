@@ -51,7 +51,7 @@ export const agent = new ToolLoopAgent({
   }),
   onStepFinish: ({ usage, stepNumber }) => {
     console.error(
-      `Step ${stepNumber}: ${usage.inputTokens ?? 0} input, ${usage.outputTokens ?? 0} output`,
+      `Step ${stepNumber}: ${usage.inputTokens ?? 0} input, ${usage.outputTokens ?? 0} output, ${usage.cachedInputTokens ?? 0} cached`,
     );
   },
 });
