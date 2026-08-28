@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
+import { buildSystemPrompt } from "./src/system";
 
 const cwd = resolve(process.argv[2] || process.cwd());
 const execAsync = promisify(exec);
@@ -226,22 +227,17 @@ const bash = createBashTool(
   localOps,
   createApproval({ mode: "interactive" }),
 );
+const tools = { read, grep, bash };
+const instructions = buildSystemPrompt({
+  workingDirectory: cwd,
+  sandboxType: "local",
+  toolNames: Object.keys(tools),
+});
 
 export const agent = new ToolLoopAgent({
   model: deepseek("deepseek-v4-flash"),
-  instructions: `You are a coding agent working in: ${cwd}
-
-# Agency
-- USE your tools. Read files, search code, run commands, then answer.
-- Do NOT explain what you would do. Actually complete the task.
-- Prefer grep for searching and read for viewing known files.
-- Use bash only for commands that are not covered by another tool.
-
-# Guardrails
-- Prefer simple, minimal changes.
-- Search before creating and reuse existing patterns.
-- Do not add dependencies without asking.`,
-  tools: { read, grep, bash },
+  instructions,
+  tools,
   stopWhen: stepCountIs(10),
 });
 
