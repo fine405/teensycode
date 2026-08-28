@@ -29,6 +29,18 @@ export function buildSystemPrompt(context: PromptContext): string {
 - Search before creating and reuse existing patterns.
 - Do not add dependencies without asking.`);
 
+  sections.push(`
+# Verification
+After making changes, verify your work:
+1. Run \`npm run typecheck\` when TypeScript is present.
+2. Run lint, test, or build commands only when they exist in the project and
+   are allowed by the current approval mode.
+3. Report exactly what ran, what was blocked, and what was unavailable.
+4. Do not inflate partial verification into a blanket success claim.
+
+Do NOT claim that tests pass without running them. Scope every verification
+claim to the checks that actually ran.`);
+
   if (context.projectContext) {
     sections.push(`
 # Project Instructions (from AGENTS.md)

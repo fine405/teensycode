@@ -14,6 +14,8 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Sandbox: local");
     expect(prompt).toContain("Available tools: read, grep");
     expect(prompt).toContain("Current branch: feature/test");
+    expect(prompt).toContain("# Verification");
+    expect(prompt).toContain("Do NOT claim that tests pass without running them");
   });
 
   test("omits optional sections when context is absent", () => {
