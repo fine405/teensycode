@@ -18,6 +18,9 @@ npm run typecheck
 
 Add your own DeepSeek API key to `.env.local`. Never commit that file.
 
+Set `SANDBOX=just-bash` to use the copy-on-write in-memory backend. It reads
+from the target project but keeps writes in memory.
+
 ## Learning history
 
 Each `course/NN-*` branch is a runnable cumulative module checkpoint. Each lesson has an atomic commit and a `lesson/NN.N-*` tag, including concise notes for concept-only lessons.

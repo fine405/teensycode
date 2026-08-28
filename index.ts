@@ -1,6 +1,7 @@
 import { deepseek } from "@ai-sdk/deepseek";
 import { ToolLoopAgent, stepCountIs } from "ai";
 import { resolve } from "node:path";
+import { createJustBashSandbox } from "./src/sandbox-just-bash";
 import { createLocalSandbox } from "./src/sandbox-local";
 import { buildSystemPrompt } from "./src/system";
 import {
@@ -11,7 +12,10 @@ import {
 } from "./src/tools";
 
 const cwd = resolve(process.argv[2] || process.cwd());
-const sandbox = createLocalSandbox(cwd);
+const sandboxType = process.env.SANDBOX ?? "local";
+const sandbox = sandboxType === "just-bash"
+  ? await createJustBashSandbox(cwd)
+  : createLocalSandbox(cwd);
 console.error(`Sandbox: ${sandbox.type}`);
 
 const tools = {
