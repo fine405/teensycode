@@ -256,6 +256,68 @@ interface ParentAgentTools {
   edit: ReturnType<typeof createEditTool>;
 }
 
+function buildExplorer(sandbox: Sandbox, parentTools: ParentAgentTools) {
+  const model = deepseek("deepseek-v4-flash");
+  const stepBudget = 5;
+
+  return new ToolLoopAgent({
+    model,
+    instructions: `You are an explorer agent. Investigate with read and grep, then report back concisely.
+Working directory: ${sandbox.workingDirectory}
+Do not make changes or ask the user questions.`,
+    tools: {
+      read: parentTools.read,
+      grep: parentTools.grep,
+    },
+    stopWhen: stepCountIs(stepBudget),
+  });
+}
+
+function buildExecutor(sandbox: Sandbox, parentTools: ParentAgentTools) {
+  const model = deepseek("deepseek-v4-pro");
+  const stepBudget = 15;
+  const bash = createBashTool(
+    sandbox,
+    createApproval({
+      mode: "delegated",
+      trust: ["npm test", "npm run typecheck", "npm run build", "npx tsc"],
+    }),
+  );
+
+  return new ToolLoopAgent({
+    model,
+    instructions: `You are an executor agent. Follow the delegated instructions precisely.
+Working directory: ${sandbox.workingDirectory}
+Do not ask questions or explore beyond what the task needs. Make the requested
+change, run an allowed verification command, and report the exact result.`,
+    tools: {
+      read: parentTools.read,
+      grep: parentTools.grep,
+      write: parentTools.write,
+      edit: parentTools.edit,
+      bash,
+    },
+    stopWhen: stepCountIs(stepBudget),
+  });
+}
+
+type Subagent = ReturnType<typeof buildExplorer> | ReturnType<typeof buildExecutor>;
+
+async function runSubagent(
+  role: "Explorer" | "Executor",
+  agent: Subagent,
+  description: string,
+): Promise<string> {
+  try {
+    const { text, steps } = await agent.generate({ prompt: description });
+    return text
+      ? `[${role}: ${steps.length} steps]\n${text}`
+      : `(no response from ${role.toLowerCase()})`;
+  } catch (error) {
+    return `${role} error: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 export function createTaskTool(
   sandbox: Sandbox,
   parentTools: ParentAgentTools,
@@ -283,59 +345,11 @@ USAGE: give the subagent a precise goal, constraints, and expected report.`,
         .describe("Subagent role"),
     }),
     execute: async ({ description, subagentType }) => {
-      if (subagentType === "executor") {
-        const executor = new ToolLoopAgent({
-          model: deepseek("deepseek-v4-pro"),
-          instructions: `You are an executor agent. Follow the delegated instructions precisely.
-Working directory: ${sandbox.workingDirectory}
-Do not ask questions or explore beyond what the task needs. Make the requested
-change, run an allowed verification command, and report the exact result.`,
-          tools: {
-            read: parentTools.read,
-            grep: parentTools.grep,
-            write: parentTools.write,
-            edit: parentTools.edit,
-            bash: createBashTool(
-              sandbox,
-              createApproval({
-                mode: "delegated",
-                trust: ["npm test", "npm run typecheck", "npm run build", "npx tsc"],
-              }),
-            ),
-          },
-          stopWhen: stepCountIs(15),
-        });
-
-        try {
-          const { text, steps } = await executor.generate({ prompt: description });
-          return text
-            ? `[Executor: ${steps.length} steps]\n${text}`
-            : "(no response from executor)";
-        } catch (error) {
-          return `Executor error: ${error instanceof Error ? error.message : String(error)}`;
-        }
-      }
-
-      const explorer = new ToolLoopAgent({
-        model: deepseek("deepseek-v4-flash"),
-        instructions: `You are an explorer agent. Investigate with read and grep, then report back concisely.
-Working directory: ${sandbox.workingDirectory}
-Do not make changes or ask the user questions.`,
-        tools: {
-          read: parentTools.read,
-          grep: parentTools.grep,
-        },
-        stopWhen: stepCountIs(5),
-      });
-
-      try {
-        const { text, steps } = await explorer.generate({ prompt: description });
-        return text
-          ? `[Explorer: ${steps.length} steps]\n${text}`
-          : "(no response from explorer)";
-      } catch (error) {
-        return `Explorer error: ${error instanceof Error ? error.message : String(error)}`;
-      }
+      const role = subagentType === "executor" ? "Executor" : "Explorer";
+      const agent = subagentType === "executor"
+        ? buildExecutor(sandbox, parentTools)
+        : buildExplorer(sandbox, parentTools);
+      return runSubagent(role, agent, description);
     },
   });
 }
