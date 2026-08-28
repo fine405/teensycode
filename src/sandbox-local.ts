@@ -1,5 +1,5 @@
 import { exec } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { Sandbox } from "./sandbox";
@@ -22,6 +22,7 @@ export function createLocalSandbox(directory: string): Sandbox {
     type: "local",
     workingDirectory: root,
     readFile: async (path) => readFile(resolvePath(path), "utf8"),
+    writeFile: async (path, content) => writeFile(resolvePath(path), content, "utf8"),
     exec: async (command) => {
       try {
         const { stdout, stderr } = await execAsync(command, {

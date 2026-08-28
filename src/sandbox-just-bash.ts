@@ -25,6 +25,9 @@ export async function createJustBashSandbox(directory: string): Promise<Sandbox>
     type: "just-bash",
     workingDirectory: root,
     readFile: async (path) => justBash.readFile(virtualPath(path)),
+    writeFile: async (path, content) => {
+      await justBash.writeFiles({ [virtualPath(path)]: content });
+    },
     exec: async (command) => {
       const result = await justBash.runCommand(command, { cwd: mount });
       return {

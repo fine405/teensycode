@@ -42,4 +42,16 @@ describe("createJustBashSandbox", () => {
     expect(await sandbox.readFile("state.txt")).toBe("changed\n");
     expect(await readFile(join(directory, "state.txt"), "utf8")).toBe("original\n");
   });
+
+  test("keeps direct writes in the overlay", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "teensycode-memory-"));
+    temporaryDirectories.push(directory);
+    const sandbox = await createJustBashSandbox(directory);
+    sandboxes.push(sandbox);
+
+    await sandbox.writeFile("created.txt", "created");
+
+    expect(await sandbox.readFile("created.txt")).toBe("created");
+    expect(readFile(join(directory, "created.txt"), "utf8")).rejects.toThrow();
+  });
 });

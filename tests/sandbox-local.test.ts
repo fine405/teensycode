@@ -36,6 +36,19 @@ describe("createLocalSandbox", () => {
     );
   });
 
+  test("writes files inside its working directory", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "teensycode-local-"));
+    temporaryDirectories.push(directory);
+    const sandbox = createLocalSandbox(directory);
+
+    await sandbox.writeFile("created.txt", "created");
+
+    expect(await sandbox.readFile("created.txt")).toBe("created");
+    expect(sandbox.writeFile("../outside.txt", "nope")).rejects.toThrow(
+      "Path is outside the working directory",
+    );
+  });
+
   test("returns non-zero command results instead of throwing", async () => {
     const directory = await mkdtemp(join(tmpdir(), "teensycode-local-"));
     temporaryDirectories.push(directory);

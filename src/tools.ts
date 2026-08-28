@@ -187,31 +187,135 @@ EXAMPLES:
   });
 }
 
-interface ParentResearchTools {
+export function createWriteTool(sandbox: Sandbox) {
+  return tool({
+    description: `Write complete UTF-8 content to a project file.
+
+WHEN TO USE: creating a new file or intentionally replacing a whole small file.
+
+WHEN NOT TO USE: changing a localized part of an existing file (use edit).
+
+DO NOT USE FOR: reading, searching, or appending uncertain content.
+
+USAGE: path is relative to the working directory. content replaces the entire
+  file, so read an existing file first.
+
+EXAMPLES:
+  - Create a file: path "src/example.ts", content "export const value = 1;"`,
+    inputSchema: z.object({
+      path: z.string().describe("File path relative to working directory"),
+      content: z.string().describe("Complete UTF-8 file content"),
+    }),
+    execute: async ({ path, content }) => {
+      const safePath = projectPath(path);
+      await sandbox.writeFile(safePath, content);
+      return `Wrote ${content.length} characters to ${safePath}.`;
+    },
+  });
+}
+
+export function createEditTool(sandbox: Sandbox) {
+  return tool({
+    description: `Replace one exact text occurrence in an existing project file.
+
+WHEN TO USE: making a focused, deterministic change after reading the file.
+
+WHEN NOT TO USE: creating files or replacing a whole file (use write).
+
+DO NOT USE FOR: ambiguous replacements that occur more than once.
+
+USAGE: oldText must be non-empty and occur exactly once. The edit is rejected
+  when the match is missing or ambiguous.
+
+EXAMPLES:
+  - Rename one declaration: path "src/a.ts", oldText "const oldName", newText "const newName"`,
+    inputSchema: z.object({
+      path: z.string().describe("File path relative to working directory"),
+      oldText: z.string().min(1).describe("Exact text that must occur once"),
+      newText: z.string().describe("Replacement text"),
+    }),
+    execute: async ({ path, oldText, newText }) => {
+      const safePath = projectPath(path);
+      const content = await sandbox.readFile(safePath);
+      const matches = content.split(oldText).length - 1;
+      if (matches === 0) return `Edit rejected: text was not found in ${safePath}.`;
+      if (matches > 1) {
+        return `Edit rejected: text occurs ${matches} times in ${safePath}; provide more context.`;
+      }
+
+      await sandbox.writeFile(safePath, content.replace(oldText, newText));
+      return `Edited ${safePath}.`;
+    },
+  });
+}
+
+interface ParentAgentTools {
   read: ReturnType<typeof createReadTool>;
   grep: ReturnType<typeof createGrepTool>;
+  write: ReturnType<typeof createWriteTool>;
+  edit: ReturnType<typeof createEditTool>;
 }
 
 export function createTaskTool(
   sandbox: Sandbox,
-  parentTools: ParentResearchTools,
+  parentTools: ParentAgentTools,
 ) {
   return tool({
-    description: `Delegate research to a read-only subagent.
+    description: `Delegate work to a scoped subagent.
 
-WHEN TO USE: investigating a codebase, finding patterns, and gathering context
-  across many files without polluting the parent context.
+Explorer (default): read-only research with DeepSeek V4 Flash.
+Executor: focused implementation with DeepSeek V4 Pro, write/edit, and a
+  delegated bash trust slice.
 
-WHEN NOT TO USE: making changes or tasks that need a user decision.
+WHEN TO USE: broad codebase research (explorer) or explicit mechanical changes
+  with known verification steps (executor).
 
-DO NOT USE FOR: implementation, architectural decisions, or user questions.
+WHEN NOT TO USE: ambiguous requirements or architectural decisions.
 
-USAGE: provide one focused investigation with an explicit expected report.
-  The explorer has read and grep only and a five-step budget.`,
+DO NOT USE FOR: user questions or single-step work the parent can do directly.
+
+USAGE: give the subagent a precise goal, constraints, and expected report.`,
     inputSchema: z.object({
-      description: z.string().describe("What the explorer should investigate"),
+      description: z.string().describe("Task instructions for the subagent"),
+      subagentType: z
+        .enum(["explorer", "executor"])
+        .default("explorer")
+        .describe("Subagent role"),
     }),
-    execute: async ({ description }) => {
+    execute: async ({ description, subagentType }) => {
+      if (subagentType === "executor") {
+        const executor = new ToolLoopAgent({
+          model: deepseek("deepseek-v4-pro"),
+          instructions: `You are an executor agent. Follow the delegated instructions precisely.
+Working directory: ${sandbox.workingDirectory}
+Do not ask questions or explore beyond what the task needs. Make the requested
+change, run an allowed verification command, and report the exact result.`,
+          tools: {
+            read: parentTools.read,
+            grep: parentTools.grep,
+            write: parentTools.write,
+            edit: parentTools.edit,
+            bash: createBashTool(
+              sandbox,
+              createApproval({
+                mode: "delegated",
+                trust: ["npm test", "npm run typecheck", "npm run build", "npx tsc"],
+              }),
+            ),
+          },
+          stopWhen: stepCountIs(15),
+        });
+
+        try {
+          const { text, steps } = await executor.generate({ prompt: description });
+          return text
+            ? `[Executor: ${steps.length} steps]\n${text}`
+            : "(no response from executor)";
+        } catch (error) {
+          return `Executor error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }
+
       const explorer = new ToolLoopAgent({
         model: deepseek("deepseek-v4-flash"),
         instructions: `You are an explorer agent. Investigate with read and grep, then report back concisely.

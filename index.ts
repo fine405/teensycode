@@ -8,9 +8,11 @@ import { buildSystemPrompt } from "./src/system";
 import {
   createApproval,
   createBashTool,
+  createEditTool,
   createGrepTool,
   createReadTool,
   createTaskTool,
+  createWriteTool,
 } from "./src/tools";
 
 const cwd = resolve(process.argv[2] || process.cwd());
@@ -26,6 +28,8 @@ await lifecycle.afterStart?.(sandbox);
 const baseTools = {
   read: createReadTool(sandbox),
   grep: createGrepTool(sandbox),
+  write: createWriteTool(sandbox),
+  edit: createEditTool(sandbox),
   bash: createBashTool(sandbox, createApproval({ mode: "interactive" })),
 };
 const tools = {
@@ -33,6 +37,8 @@ const tools = {
   task: createTaskTool(sandbox, {
     read: baseTools.read,
     grep: baseTools.grep,
+    write: baseTools.write,
+    edit: baseTools.edit,
   }),
 };
 const projectContext = await sandbox.readFile("AGENTS.md").catch(() => undefined);
