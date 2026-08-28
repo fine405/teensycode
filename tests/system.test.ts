@@ -16,6 +16,8 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Current branch: feature/test");
     expect(prompt).toContain("# Verification");
     expect(prompt).toContain("Do NOT claim that tests pass without running them");
+    expect(prompt).toContain("# Handling Ambiguity");
+    expect(prompt).toContain("Use askUser to let the user choose");
   });
 
   test("omits optional sections when context is absent", () => {

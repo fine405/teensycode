@@ -7,6 +7,7 @@ import type { SandboxLifecycle } from "./src/sandbox";
 import { buildSystemPrompt } from "./src/system";
 import {
   createApproval,
+  createAskUserTool,
   createBashTool,
   createEditTool,
   createGrepTool,
@@ -31,6 +32,7 @@ const baseTools = {
   write: createWriteTool(sandbox),
   edit: createEditTool(sandbox),
   bash: createBashTool(sandbox, createApproval({ mode: "interactive" })),
+  askUser: createAskUserTool(),
 };
 const tools = {
   ...baseTools,

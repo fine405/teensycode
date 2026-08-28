@@ -249,6 +249,38 @@ EXAMPLES:
   });
 }
 
+export function createAskUserTool() {
+  return tool({
+    description: `Ask the user a multiple-choice question before acting.
+
+WHEN TO USE: scoping ambiguous tasks, choosing between valid approaches, or
+  resolving a missing detail that code search cannot answer.
+
+WHEN NOT TO USE: the request already provides enough detail to proceed.
+
+DO NOT USE FOR: rhetorical questions, progress updates, or decisions the code
+  and project instructions already determine.
+
+USAGE: ask one concise question with two to four mutually exclusive options.`,
+    inputSchema: z.object({
+      question: z.string().describe("Question to ask the user"),
+      options: z
+        .array(z.string())
+        .min(2)
+        .max(4)
+        .describe("Two to four options for the user to choose from"),
+    }),
+    execute: async ({ question, options }) => {
+      const formatted = options
+        .map((option, index) => `${index + 1}. ${option}`)
+        .join("\n");
+      const output = `Question: ${question}\n${formatted}`;
+      console.log(`\n${output}\n`);
+      return `Asked: "${question}"\nOptions:\n${formatted}\n\n(Awaiting user response.)`;
+    },
+  });
+}
+
 interface ParentAgentTools {
   read: ReturnType<typeof createReadTool>;
   grep: ReturnType<typeof createGrepTool>;

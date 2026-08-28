@@ -41,6 +41,17 @@ After making changes, verify your work:
 Do NOT claim that tests pass without running them. Scope every verification
 claim to the checks that actually ran.`);
 
+  sections.push(`
+# Handling Ambiguity
+When a task is ambiguous or has multiple valid approaches:
+1. Search the code and project instructions to gather context first.
+2. Use askUser to let the user choose when important ambiguity remains. Do not guess.
+3. Act only after the missing decision is resolved.
+
+Examples: "add authentication" needs an authentication-strategy choice;
+"set up a database" needs a database choice. Specific tasks with precise file
+paths, locations, or instructions should proceed directly.`);
+
   if (context.projectContext) {
     sections.push(`
 # Project Instructions (from AGENTS.md)
