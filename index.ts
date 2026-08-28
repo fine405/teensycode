@@ -1,6 +1,7 @@
 import { deepseek } from "@ai-sdk/deepseek";
 import { ToolLoopAgent, stepCountIs, tool } from "ai";
 import { exec, execFile } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -228,10 +229,15 @@ const bash = createBashTool(
   createApproval({ mode: "interactive" }),
 );
 const tools = { read, grep, bash };
+const agentsPath = resolveProjectPath("AGENTS.md");
+const projectContext = existsSync(agentsPath)
+  ? readFileSync(agentsPath, "utf8")
+  : undefined;
 const instructions = buildSystemPrompt({
   workingDirectory: cwd,
   sandboxType: "local",
   toolNames: Object.keys(tools),
+  projectContext,
 });
 
 export const agent = new ToolLoopAgent({

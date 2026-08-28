@@ -28,4 +28,16 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain("Current branch:");
     expect(prompt).not.toContain("Project Instructions");
   });
+
+  test("injects project instructions when provided", () => {
+    const prompt = buildSystemPrompt({
+      workingDirectory: "/project",
+      sandboxType: "local",
+      toolNames: [],
+      projectContext: "Run npm test before committing.",
+    });
+
+    expect(prompt).toContain("# Project Instructions (from AGENTS.md)");
+    expect(prompt).toContain("Run npm test before committing.");
+  });
 });
