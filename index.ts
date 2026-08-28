@@ -10,6 +10,7 @@ import {
   createBashTool,
   createGrepTool,
   createReadTool,
+  createTaskTool,
 } from "./src/tools";
 
 const cwd = resolve(process.argv[2] || process.cwd());
@@ -22,10 +23,17 @@ const lifecycle: SandboxLifecycle = {};
 console.error(`Sandbox: ${sandbox.type}`);
 await lifecycle.afterStart?.(sandbox);
 
-const tools = {
+const baseTools = {
   read: createReadTool(sandbox),
   grep: createGrepTool(sandbox),
   bash: createBashTool(sandbox, createApproval({ mode: "interactive" })),
+};
+const tools = {
+  ...baseTools,
+  task: createTaskTool(sandbox, {
+    read: baseTools.read,
+    grep: baseTools.grep,
+  }),
 };
 const projectContext = await sandbox.readFile("AGENTS.md").catch(() => undefined);
 const instructions = buildSystemPrompt({

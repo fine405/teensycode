@@ -1,4 +1,5 @@
-import { tool } from "ai";
+import { deepseek } from "@ai-sdk/deepseek";
+import { ToolLoopAgent, stepCountIs, tool } from "ai";
 import { isAbsolute, normalize } from "node:path";
 import { z } from "zod";
 import type { Sandbox } from "./sandbox";
@@ -182,6 +183,55 @@ EXAMPLES:
       return result.exitCode === 0
         ? boundedOutput
         : `Exit ${result.exitCode}: ${boundedOutput}`;
+    },
+  });
+}
+
+interface ParentResearchTools {
+  read: ReturnType<typeof createReadTool>;
+  grep: ReturnType<typeof createGrepTool>;
+}
+
+export function createTaskTool(
+  sandbox: Sandbox,
+  parentTools: ParentResearchTools,
+) {
+  return tool({
+    description: `Delegate research to a read-only subagent.
+
+WHEN TO USE: investigating a codebase, finding patterns, and gathering context
+  across many files without polluting the parent context.
+
+WHEN NOT TO USE: making changes or tasks that need a user decision.
+
+DO NOT USE FOR: implementation, architectural decisions, or user questions.
+
+USAGE: provide one focused investigation with an explicit expected report.
+  The explorer has read and grep only and a five-step budget.`,
+    inputSchema: z.object({
+      description: z.string().describe("What the explorer should investigate"),
+    }),
+    execute: async ({ description }) => {
+      const explorer = new ToolLoopAgent({
+        model: deepseek("deepseek-v4-flash"),
+        instructions: `You are an explorer agent. Investigate with read and grep, then report back concisely.
+Working directory: ${sandbox.workingDirectory}
+Do not make changes or ask the user questions.`,
+        tools: {
+          read: parentTools.read,
+          grep: parentTools.grep,
+        },
+        stopWhen: stepCountIs(5),
+      });
+
+      try {
+        const { text, steps } = await explorer.generate({ prompt: description });
+        return text
+          ? `[Explorer: ${steps.length} steps]\n${text}`
+          : "(no response from explorer)";
+      } catch (error) {
+        return `Explorer error: ${error instanceof Error ? error.message : String(error)}`;
+      }
     },
   });
 }
