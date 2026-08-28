@@ -40,6 +40,11 @@ export const agent = new ToolLoopAgent({
   instructions,
   tools,
   stopWhen: stepCountIs(10),
+  onStepFinish: ({ usage, stepNumber }) => {
+    console.error(
+      `Step ${stepNumber}: ${usage.inputTokens ?? 0} input, ${usage.outputTokens ?? 0} output`,
+    );
+  },
 });
 
 if (import.meta.main) {
