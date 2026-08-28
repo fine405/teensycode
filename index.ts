@@ -1,6 +1,7 @@
 import { deepseek } from "@ai-sdk/deepseek";
 import { ToolLoopAgent, pruneMessages, stepCountIs } from "ai";
 import { resolve } from "node:path";
+import { parseArgs } from "node:util";
 import { createJustBashSandbox } from "./src/sandbox-just-bash";
 import { createLocalSandbox } from "./src/sandbox-local";
 import type { SandboxLifecycle } from "./src/sandbox";
@@ -18,11 +19,28 @@ import {
 } from "./src/tools";
 import { discoverVerificationCommands } from "./src/verification";
 
-const cwd = resolve(process.argv[2] || process.cwd());
-const sandboxType = process.env.SANDBOX ?? "local";
-const sandbox = sandboxType === "just-bash"
-  ? await createJustBashSandbox(cwd)
-  : createLocalSandbox(cwd);
+const { values, positionals } = parseArgs({
+  args: process.argv.slice(2),
+  options: {
+    sandbox: { type: "string", default: process.env.SANDBOX ?? "local" },
+    model: {
+      type: "string",
+      default: process.env.DEEPSEEK_MODEL ?? "deepseek-v4-flash",
+    },
+  },
+  allowPositionals: true,
+});
+
+const cwd = resolve(positionals[0] || process.cwd());
+const prompt = positionals.slice(1).join(" ") || "Hello!";
+
+async function sandboxFromFlag(name: string) {
+  if (name === "local") return createLocalSandbox(cwd);
+  if (name === "just-bash") return createJustBashSandbox(cwd);
+  throw new Error(`Unknown sandbox: ${name}. Expected local or just-bash.`);
+}
+
+const sandbox = await sandboxFromFlag(values.sandbox);
 const lifecycle: SandboxLifecycle = {};
 
 console.error(`Sandbox: ${sandbox.type}`);
@@ -57,7 +75,7 @@ const instructions = buildSystemPrompt({
 });
 
 export const agent = new ToolLoopAgent({
-  model: deepseek("deepseek-v4-flash"),
+  model: deepseek(values.model),
   instructions,
   tools,
   stopWhen: stepCountIs(10),
@@ -78,13 +96,25 @@ export const agent = new ToolLoopAgent({
 });
 
 if (import.meta.main) {
-  const prompt = process.argv.slice(3).join(" ") || "Hello!";
+  let stopped = false;
+  const stopSandbox = async () => {
+    if (stopped) return;
+    stopped = true;
+    await lifecycle.beforeStop?.(sandbox);
+    await sandbox.stop();
+  };
+
+  process.once("SIGINT", async () => {
+    console.error("\nShutting down...");
+    await stopSandbox();
+    process.exit(0);
+  });
+
   try {
     const { text, steps } = await agent.generate({ prompt });
     console.log(text);
     console.log(`\n(${steps.length} steps)`);
   } finally {
-    await lifecycle.beforeStop?.(sandbox);
-    await sandbox.stop();
+    await stopSandbox();
   }
 }
