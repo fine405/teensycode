@@ -1,13 +1,40 @@
 import { deepseek } from "@ai-sdk/deepseek";
 import { ToolLoopAgent, stepCountIs, tool } from "ai";
-import { execFile } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 
 const cwd = resolve(process.argv[2] || process.cwd());
+const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
+
+const safePrefixes = [
+  "ls",
+  "cat",
+  "echo",
+  "pwd",
+  "which",
+  "find",
+  "head",
+  "tail",
+  "wc",
+  "git log",
+  "git status",
+  "git diff",
+];
+
+function isSafe(command: string): boolean {
+  const normalized = command.trim();
+  const containsShellOperator = /[;&|><`]|\$\(/.test(normalized);
+  return (
+    !containsShellOperator &&
+    safePrefixes.some(
+      (prefix) => normalized === prefix || normalized.startsWith(`${prefix} `),
+    )
+  );
+}
 
 function resolveProjectPath(filePath: string): string {
   const absolutePath = resolve(cwd, filePath);
@@ -102,10 +129,46 @@ EXAMPLES:
   },
 });
 
+const bash = tool({
+  description: `Execute a shell command in the working directory.
+WHEN TO USE: running build commands, package scripts, tests, git operations,
+  or directory listings.
+WHEN NOT TO USE: reading file contents (use read instead), searching for
+  patterns (use grep instead).
+DO NOT USE FOR: reading files or searching code.
+EXAMPLES:
+  - List files: command "ls -la"
+  - Inspect changes: command "git diff"`,
+  inputSchema: z.object({
+    command: z.string().describe("Shell command to execute"),
+  }),
+  execute: async ({ command }) => {
+    if (!isSafe(command)) {
+      return `Blocked: "${command}" requires approval. Only safe commands (${safePrefixes.join(", ")}) run automatically.`;
+    }
+
+    try {
+      const { stdout, stderr } = await execAsync(command, {
+        cwd,
+        encoding: "utf8",
+        timeout: 30_000,
+      });
+      return stdout || stderr || "(no output)";
+    } catch (error) {
+      const result = error as Error & {
+        code?: number;
+        stdout?: string;
+        stderr?: string;
+      };
+      return `Exit ${result.code ?? 1}: ${result.stdout || result.stderr || result.message}`;
+    }
+  },
+});
+
 export const agent = new ToolLoopAgent({
   model: deepseek("deepseek-v4-flash"),
   instructions: `You are a coding agent.\nWorking directory: ${cwd}`,
-  tools: { read, grep },
+  tools: { read, grep, bash },
   stopWhen: stepCountIs(10),
 });
 
