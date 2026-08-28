@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createApproval } from "../index";
+import { createApproval } from "../src/tools";
 
 describe("createApproval", () => {
   test("interactive mode allows safe commands and blocks other input", () => {
