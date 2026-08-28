@@ -3,6 +3,7 @@ import { ToolLoopAgent, stepCountIs } from "ai";
 import { resolve } from "node:path";
 import { createJustBashSandbox } from "./src/sandbox-just-bash";
 import { createLocalSandbox } from "./src/sandbox-local";
+import type { SandboxLifecycle } from "./src/sandbox";
 import { buildSystemPrompt } from "./src/system";
 import {
   createApproval,
@@ -16,7 +17,10 @@ const sandboxType = process.env.SANDBOX ?? "local";
 const sandbox = sandboxType === "just-bash"
   ? await createJustBashSandbox(cwd)
   : createLocalSandbox(cwd);
+const lifecycle: SandboxLifecycle = {};
+
 console.error(`Sandbox: ${sandbox.type}`);
+await lifecycle.afterStart?.(sandbox);
 
 const tools = {
   read: createReadTool(sandbox),
@@ -40,7 +44,12 @@ export const agent = new ToolLoopAgent({
 
 if (import.meta.main) {
   const prompt = process.argv.slice(3).join(" ") || "Hello!";
-  const { text, steps } = await agent.generate({ prompt });
-  console.log(text);
-  console.log(`\n(${steps.length} steps)`);
+  try {
+    const { text, steps } = await agent.generate({ prompt });
+    console.log(text);
+    console.log(`\n(${steps.length} steps)`);
+  } finally {
+    await lifecycle.beforeStop?.(sandbox);
+    await sandbox.stop();
+  }
 }
