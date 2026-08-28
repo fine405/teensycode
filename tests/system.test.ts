@@ -9,6 +9,7 @@ describe("buildSystemPrompt", () => {
       toolNames: ["read", "grep"],
       gitBranch: "feature/test",
       verificationCommands: ["npm run typecheck", "npm test"],
+      skills: [{ name: "auth", description: "Project authentication rules" }],
     });
 
     expect(prompt).toContain("working in: /project");
@@ -23,6 +24,8 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("1. `npm run typecheck`");
     expect(prompt).toContain("2. `npm test`");
     expect(prompt).toContain("failures caused by your changes");
+    expect(prompt).toContain("# Skills");
+    expect(prompt).toContain("- auth: Project authentication rules");
   });
 
   test("omits optional sections when context is absent", () => {
@@ -34,6 +37,7 @@ describe("buildSystemPrompt", () => {
 
     expect(prompt).not.toContain("Current branch:");
     expect(prompt).not.toContain("Project Instructions");
+    expect(prompt).not.toContain("# Skills");
   });
 
   test("injects project instructions when provided", () => {

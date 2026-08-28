@@ -1,10 +1,11 @@
 import { deepseek } from "@ai-sdk/deepseek";
 import { ToolLoopAgent, pruneMessages, stepCountIs } from "ai";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { createJustBashSandbox } from "./src/sandbox-just-bash";
 import { createLocalSandbox } from "./src/sandbox-local";
 import type { SandboxLifecycle } from "./src/sandbox";
+import { discoverSkills } from "./src/skills";
 import { buildSystemPrompt } from "./src/system";
 import {
   createApproval,
@@ -12,6 +13,7 @@ import {
   createBashTool,
   createEditTool,
   createGrepTool,
+  createLoadSkillTool,
   createReadTool,
   createTaskTool,
   createTodoTool,
@@ -42,6 +44,13 @@ async function sandboxFromFlag(name: string) {
 
 const sandbox = await sandboxFromFlag(values.sandbox);
 const lifecycle: SandboxLifecycle = {};
+const skillDirectories = [
+  join(cwd, "skills"),
+  ...(process.env.HOME
+    ? [join(process.env.HOME, ".harness", "skills")]
+    : []),
+];
+const skills = discoverSkills(skillDirectories);
 
 console.error(`Sandbox: ${sandbox.type}`);
 await lifecycle.afterStart?.(sandbox);
@@ -54,6 +63,7 @@ const baseTools = {
   bash: createBashTool(sandbox, createApproval({ mode: "interactive" })),
   askUser: createAskUserTool(),
   todo: createTodoTool(),
+  loadSkill: createLoadSkillTool(skills),
 };
 const tools = {
   ...baseTools,
@@ -72,6 +82,7 @@ const instructions = buildSystemPrompt({
   toolNames: Object.keys(tools),
   projectContext,
   verificationCommands,
+  skills: skills.map(({ name, description }) => ({ name, description })),
 });
 
 export const agent = new ToolLoopAgent({

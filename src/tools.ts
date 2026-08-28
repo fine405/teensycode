@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute, normalize } from "node:path";
 import { z } from "zod";
 import type { Sandbox } from "./sandbox";
+import { readFileSync } from "node:fs";
+import type { Skill } from "./skills";
 
 const safePrefixes = [
   "ls",
@@ -354,6 +356,35 @@ USAGE: add pending items, start exactly one, complete it, then start the next.`,
       id: z.string().optional(),
     }),
     execute: async (input) => manager.run(input),
+  });
+}
+
+export function createLoadSkillTool(skills: Skill[]) {
+  const maxCharacters = 4_000;
+  const byName = new Map(skills.map((skill) => [skill.name, skill]));
+
+  return tool({
+    description: `Load the full content of an available skill.
+
+WHEN TO USE: the task touches a domain named in the # Skills section.
+
+WHEN NOT TO USE: tasks unrelated to the listed skills.
+
+DO NOT USE FOR: guessing unlisted skill names.
+
+USAGE: pass the exact skill name from the # Skills section.`,
+    inputSchema: z.object({
+      name: z.string().describe("Skill name listed in the Skills section"),
+    }),
+    execute: async ({ name }) => {
+      const skill = byName.get(name);
+      if (!skill) return `Unknown skill: ${name}`;
+
+      const content = readFileSync(skill.path, "utf8");
+      return content.length > maxCharacters
+        ? `${content.slice(0, maxCharacters)}\n... (truncated at ${maxCharacters} chars)`
+        : content;
+    },
   });
 }
 
